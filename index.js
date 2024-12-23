@@ -52,13 +52,35 @@ async function run() {
       const service = await serviceCollection.findOne(query);
       res.send(service)
     })
-    // serive info iupdate
+    // edit apit service
+    app.put('/addservice2/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const option = {upsert :true};
+      const updatedData = req.body;
+      const data = {
+        $set : {
+          imageUrl : updatedData.imageUrl,
+          serviceName : updatedData.serviceName,
+          serviceArea : updatedData.serviceArea,
+          description : updatedData.description,
+          price : updatedData.price,
+        }
+      }
+
+      const service = await serviceCollection.updateOne(query,data,option);
+      res.send(service)
+    })
+
+    // serive info i update
     app.get('/addservice2/:id', async (req, res) => {
       const id = req.params.id;
+
       const query = { _id: new ObjectId(id) }
       const service = await serviceCollection.findOne(query);
       res.send(service)
     })
+
     // all serviec api
     app.get('/addservice', async (req, res) => {
       const email = req.query.email;
