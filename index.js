@@ -2,14 +2,13 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const app = express();
-const  port = process.env.PORT || 5000;
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const port = process.env.PORT || 5000;
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-// service_job
-// ZSJxoR0PyYs4JDmS
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+// middleware
 app.use(cors());
 app.use(express.json());
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
 
@@ -21,14 +20,42 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+
 async function run() {
   try {
 
     const userCollection = client.db('service').collection("user")
+    const serviceCollection = client.db('service').collection("allservice")
+    
     // Connect the client to the server	(optional starting in v4.7)
-   
-    app.post('/user', async (req, res)=>{
+
+    // service details
+    app.get('/addservice/:id', async (req,res)=>{
+      const id = req.params.id;
+      const query = {_id : new ObjectId(id)}
+      const service = await serviceCollection.findOne(query);
+      res.send(service)
+    })
+    // all serviec api
+    app.get('/addservice', async (req, res) => {
+      const cursor = serviceCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+    // create service
+    app.post('/addservice', async (req, res) => {
+      const newservice = req.body;
+      console.log(" new service", newservice);
+      const result = await serviceCollection.insertOne(newservice);
+      res.send(result);
+
+    })
+
+    // create user
+
+    app.post('/user', async (req, res) => {
       const newuser = req.body;
+      console.log("new user, ", newuser);
       const result = await userCollection.insertOne(newuser);
       res.send(result);
     })
@@ -44,11 +71,11 @@ run().catch(console.dir);
 
 
 
-app.get('/', (req,res)=>{
-    res.send('service is getting ready ')
+app.get('/', (req, res) => {
+  res.send('service is getting ready ')
 })
 
-app.listen( port, ()=>{
-    console.log("service portal is runnning on ", port);
-    
+app.listen(port, () => {
+  console.log("service portal is runnning on ", port);
+
 })
