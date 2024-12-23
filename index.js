@@ -26,19 +26,40 @@ async function run() {
 
     const userCollection = client.db('service').collection("user")
     const serviceCollection = client.db('service').collection("allservice")
-    
-    // Connect the client to the server	(optional starting in v4.7)
+    const orderCollection = client.db('service').collection("order")
 
+    // Connect the client to the server	(optional starting in v4.7)
+    //  all order
+    app.get('/order', async (req, res) => {
+
+      const cursor = orderCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
+
+    // order
+    app.post('/order', async (req, res) => {
+      const order = req.body;
+      console.log(order);
+      const result = await orderCollection.insertOne(order);
+      res.send(result)
+
+    })
     // service details
-    app.get('/addservice/:id', async (req,res)=>{
+    app.get('/addservice/:id', async (req, res) => {
       const id = req.params.id;
-      const query = {_id : new ObjectId(id)}
+      const query = { _id: new ObjectId(id) }
       const service = await serviceCollection.findOne(query);
       res.send(service)
     })
     // all serviec api
     app.get('/addservice', async (req, res) => {
-      const cursor = serviceCollection.find();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { provideremail: email }
+      }
+      const cursor = serviceCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     })
