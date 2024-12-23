@@ -52,6 +52,13 @@ async function run() {
       const service = await serviceCollection.findOne(query);
       res.send(service)
     })
+    // serive info iupdate
+    app.get('/addservice2/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const service = await serviceCollection.findOne(query);
+      res.send(service)
+    })
     // all serviec api
     app.get('/addservice', async (req, res) => {
       const email = req.query.email;
