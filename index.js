@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const jwt = require('jsonwebtoken');
+const  cookieParser = require('cookie-parser');
 const app = express();
 const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -8,6 +10,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // middleware
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
@@ -27,6 +30,17 @@ async function run() {
     const userCollection = client.db('service').collection("user")
     const serviceCollection = client.db('service').collection("allservice")
     const orderCollection = client.db('service').collection("order")
+    // jwt token
+    app.post('/jwt', async (req , res)=>{
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN,
+        { expireIn: "5h" },
+      res.cookie( "token",token,{
+        httpOnly : true,
+        secure : false,
+      })
+    .send({success :true}))
+    })
 
     app.put('/order/:id', async (req, res) => {
       const id = req.params.id;
