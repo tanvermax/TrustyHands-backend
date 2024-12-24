@@ -28,11 +28,16 @@ async function run() {
     const serviceCollection = client.db('service').collection("allservice")
     const orderCollection = client.db('service').collection("order")
 
-    // Connect the client to the server	(optional starting in v4.7)
+   
+   
     //  all order
     app.get('/order', async (req, res) => {
-
-      const cursor = orderCollection.find();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { ordergivenuseremail: email }
+      }
+      const cursor = orderCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     })
@@ -109,6 +114,13 @@ async function run() {
 
     })
 
+    // get al user
+    app.get('/user', async (req, res) => {
+     
+      const cursor = userCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
     // create user
 
     app.post('/user', async (req, res) => {
@@ -137,3 +149,8 @@ app.listen(port, () => {
   console.log("service portal is runnning on ", port);
 
 })
+
+
+
+
+
