@@ -8,9 +8,29 @@ const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 // middleware
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(cookieParser());
+
+
+const  verify= (req,res,next)=>{
+  const token = req.cookies?.token;
+
+  if (!token) {
+   return res.status(401).send({message : 'Unatuhorized access'}) 
+  }
+  // verify
+  jwt.verify(token, process.env.ACCESS_TOKEN,(err,decode)=>{
+    if (err) {
+      return res.status(401).send({message : 'Unatuhorized access'}) 
+    }
+    next();
+  })
+  
+}
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
@@ -35,13 +55,20 @@ async function run() {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN,
         { expiresIn: '5h' });
-      res.cookie("token", token, {
+
+      res.cookie('token', token, {
         httpOnly: true,
         secure: false,
       })
         .send({ success: true })
     })
-
+    // token remove
+    app.post('/logout', (req, res) => {
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: false
+      }).send({ success: true })
+    })
     app.put('/order/:id', async (req, res) => {
       const id = req.params.id;
       const { serviceStatus } = req.body;
@@ -62,7 +89,7 @@ async function run() {
     });
 
     //  all order
-    app.get('/order', async (req, res) => {
+    app.get('/order',verify, async (req, res) => {
       const email = req.query.email; // For ordergivenuseremail
       const email2 = req.query.email2; // For serviceprovideremail
 
@@ -76,6 +103,7 @@ async function run() {
           ]
         };
       }
+      console.log(req.cookies);
 
       try {
         const cursor = orderCollection.find(query);
@@ -99,6 +127,7 @@ async function run() {
     app.get('/addservice/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
+
       const service = await serviceCollection.findOne(query);
       res.send(service)
     })
@@ -125,7 +154,6 @@ async function run() {
     // serive info i update
     app.get('/addservice2/:id', async (req, res) => {
       const id = req.params.id;
-
       const query = { _id: new ObjectId(id) }
       const service = await serviceCollection.findOne(query);
       res.send(service)
@@ -142,11 +170,14 @@ async function run() {
     // all serviec api
     app.get('/addservice', async (req, res) => {
       const email = req.query.email;
+      const limit = parseInt(req.query.limit) || 0;
+
       let query = {};
       if (email) {
         query = { provideremail: email }
       }
-      const cursor = serviceCollection.find(query);
+   
+      const cursor = serviceCollection.find(query).limit(limit);
       const result = await cursor.toArray();
       res.send(result);
     })
