@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const  cookieParser = require('cookie-parser');
+const cookieParser = require('cookie-parser');
 const app = express();
 const port = process.env.PORT || 5000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -31,21 +31,21 @@ async function run() {
     const serviceCollection = client.db('service').collection("allservice")
     const orderCollection = client.db('service').collection("order")
     // jwt token
-    app.post('/jwt', async (req , res)=>{
+    app.post('/jwt', async (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN,
-        { expireIn: "5h" },
-      res.cookie( "token",token,{
-        httpOnly : true,
-        secure : false,
+        { expiresIn: '5h' });
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false,
       })
-    .send({success :true}))
+        .send({ success: true })
     })
 
     app.put('/order/:id', async (req, res) => {
       const id = req.params.id;
       const { serviceStatus } = req.body;
-    
+
       try {
         const result = await orderCollection.updateOne(
           { _id: new ObjectId(id) },
@@ -60,14 +60,14 @@ async function run() {
         res.status(500).send({ success: false, message: "Internal server error" });
       }
     });
-   
+
     //  all order
     app.get('/order', async (req, res) => {
       const email = req.query.email; // For ordergivenuseremail
       const email2 = req.query.email2; // For serviceprovideremail
-      
+
       let query = {};
-    
+
       if (email || email2) {
         query = {
           $or: [
@@ -76,7 +76,7 @@ async function run() {
           ]
         };
       }
-    
+
       try {
         const cursor = orderCollection.find(query);
         const result = await cursor.toArray();
@@ -161,7 +161,7 @@ async function run() {
 
     // get al user
     app.get('/user', async (req, res) => {
-     
+
       const cursor = userCollection.find();
       const result = await cursor.toArray();
       res.send(result);
