@@ -9,12 +9,19 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 // middleware
 app.use(cors({
-  origin: ['http://localhost:5173'],
+  origin: ['http://localhost:5173',
+    "https://home-service-d15f3.web.app/",
+    "https://home-service-d15f3.firebaseapp.com/"
+  ],
   credentials: true
 }));
 app.use(express.json());
 app.use(cookieParser());
 
+// const cookieOption = {
+//   httpOnly:true,
+//   secure : process.env.ACCESS_TOKEN === "production"
+// }
 
 const  verify= (req,res,next)=>{
   const token = req.cookies?.token;
@@ -58,7 +65,7 @@ async function run() {
 
       res.cookie('token', token, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === "production",
       })
         .send({ success: true })
     })
@@ -66,7 +73,7 @@ async function run() {
     app.post('/logout', (req, res) => {
       res.clearCookie('token', {
         httpOnly: true,
-        secure: false
+        secure: process.env.NODE_ENV === "production",
       }).send({ success: true })
     })
     app.put('/order/:id', async (req, res) => {
@@ -206,7 +213,7 @@ async function run() {
       res.send(result);
     })
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
