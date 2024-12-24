@@ -32,15 +32,29 @@ async function run() {
    
     //  all order
     app.get('/order', async (req, res) => {
-      const email = req.query.email;
+      const email = req.query.email; // For ordergivenuseremail
+      const email2 = req.query.email2; // For serviceprovideremail
+      
       let query = {};
-      if (email) {
-        query = { ordergivenuseremail: email }
+    
+      if (email || email2) {
+        query = {
+          $or: [
+            { ordergivenuseremail: email },
+            { serviceprovideremail: email2 }
+          ]
+        };
       }
-      const cursor = orderCollection.find(query);
-      const result = await cursor.toArray();
-      res.send(result);
-    })
+    
+      try {
+        const cursor = orderCollection.find(query);
+        const result = await cursor.toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).send({ error: "Failed to fetch orders." });
+      }
+    });
 
     // order
     app.post('/order', async (req, res) => {
