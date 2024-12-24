@@ -28,7 +28,24 @@ async function run() {
     const serviceCollection = client.db('service').collection("allservice")
     const orderCollection = client.db('service').collection("order")
 
-   
+    app.put('/order/:id', async (req, res) => {
+      const id = req.params.id;
+      const { serviceStatus } = req.body;
+    
+      try {
+        const result = await orderCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { serviceStatus } }
+        );
+        if (result.modifiedCount > 0) {
+          res.send({ success: true, serviceStatus });
+        } else {
+          res.status(404).send({ success: false, message: "Service not found" });
+        }
+      } catch (error) {
+        res.status(500).send({ success: false, message: "Internal server error" });
+      }
+    });
    
     //  all order
     app.get('/order', async (req, res) => {
