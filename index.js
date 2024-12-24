@@ -56,19 +56,19 @@ async function run() {
     app.put('/addservice2/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
-      const option = {upsert :true};
+      const option = { upsert: true };
       const updatedData = req.body;
       const data = {
-        $set : {
-          imageUrl : updatedData.imageUrl,
-          serviceName : updatedData.serviceName,
-          serviceArea : updatedData.serviceArea,
-          description : updatedData.description,
-          price : updatedData.price,
+        $set: {
+          imageUrl: updatedData.imageUrl,
+          serviceName: updatedData.serviceName,
+          serviceArea: updatedData.serviceArea,
+          description: updatedData.description,
+          price: updatedData.price,
         }
       }
 
-      const service = await serviceCollection.updateOne(query,data,option);
+      const service = await serviceCollection.updateOne(query, data, option);
       res.send(service)
     })
 
@@ -79,6 +79,14 @@ async function run() {
       const query = { _id: new ObjectId(id) }
       const service = await serviceCollection.findOne(query);
       res.send(service)
+    })
+    // delet service
+    app.delete('/addservice/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+      const query = { _id: new ObjectId(id) }
+      const result = await serviceCollection.deleteOne(query)
+      res.send(result);
     })
 
     // all serviec api
