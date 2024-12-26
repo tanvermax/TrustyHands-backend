@@ -10,8 +10,9 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // middleware
 app.use(cors({
   origin: ['http://localhost:5173',
-    "https://home-service-d15f3.web.app/",
-    "https://home-service-d15f3.firebaseapp.com/"
+
+    "https://home-service-d15f3.firebaseapp.com",
+    'https://home-service-d15f3.web.app'
   ],
   credentials: true
 }));
@@ -23,20 +24,21 @@ app.use(cookieParser());
 //   secure : process.env.ACCESS_TOKEN === "production"
 // }
 
-const  verify= (req,res,next)=>{
+const verify = (req, res, next) => {
   const token = req.cookies?.token;
 
   if (!token) {
-   return res.status(401).send({message : 'Unatuhorized access'}) 
+    return res.status(401).send({ message: 'Unatuhorized access' })
   }
   // verify
-  jwt.verify(token, process.env.ACCESS_TOKEN,(err,decode)=>{
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decode) => {
     if (err) {
-      return res.status(401).send({message : 'Unatuhorized access'}) 
+      return res.status(401).send({ message: 'Unatuhorized access' })
     }
+    req.user = decode;
     next();
   })
-  
+
 }
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -96,7 +98,7 @@ async function run() {
     });
 
     //  all order
-    app.get('/order',verify, async (req, res) => {
+    app.get('/order', verify, async (req, res) => {
       const email = req.query.email; // For ordergivenuseremail
       const email2 = req.query.email2; // For serviceprovideremail
 
@@ -175,7 +177,7 @@ async function run() {
     })
 
     // all serviec api
-    app.get('/addservice', async (req, res) => {
+    app.get('/addservice',verify, async (req, res) => {
       const email = req.query.email;
       const limit = parseInt(req.query.limit) || 0;
 
@@ -183,7 +185,7 @@ async function run() {
       if (email) {
         query = { provideremail: email }
       }
-   
+
       const cursor = serviceCollection.find(query).limit(limit);
       const result = await cursor.toArray();
       res.send(result);
