@@ -10,7 +10,6 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // middleware
 app.use(cors({
   origin: ['http://localhost:5173',
-
     "https://home-service-d15f3.firebaseapp.com",
     'https://home-service-d15f3.web.app'
   ],
@@ -19,11 +18,12 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// const cookieOption = {
-//   httpOnly:true,
-//   secure : process.env.ACCESS_TOKEN === "production"
-// }
-
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+};
+//l
 const verify = (req, res, next) => {
   const token = req.cookies?.token;
 
@@ -65,19 +65,18 @@ async function run() {
       const token = jwt.sign(user, process.env.ACCESS_TOKEN,
         { expiresIn: '5h' });
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-      })
+      res.cookie('token', token, cookieOptions)
         .send({ success: true })
     })
     // token remove
-    app.post('/logout', (req, res) => {
-      res.clearCookie('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-      }).send({ success: true })
+    app.post('/logout', async (req, res) => {
+      const user = req.body;
+      console.log("logging out", user);
+
+      res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true })
     })
+
+
     app.put('/order/:id', async (req, res) => {
       const id = req.params.id;
       const { serviceStatus } = req.body;
@@ -177,7 +176,7 @@ async function run() {
     })
 
     // all serviec api
-    app.get('/addservice',verify, async (req, res) => {
+    app.get('/addservice', verify, async (req, res) => {
       const email = req.query.email;
       const limit = parseInt(req.query.limit) || 0;
 
