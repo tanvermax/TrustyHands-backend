@@ -174,9 +174,22 @@ async function run() {
       const result = await serviceCollection.deleteOne(query)
       res.send(result);
     })
+// privet routs jwt
+app.get('/addservice23',verify, async (req, res) => {
+  const email = req.query.email;
+  const limit = parseInt(req.query.limit) || 0;
 
+  let query = {};
+  if (email) {
+    query = { provideremail: email }
+  }
+
+  const cursor = serviceCollection.find(query).limit(limit);
+  const result = await cursor.toArray();
+  res.send(result);
+})
     // all serviec api
-    app.get('/addservice', verify, async (req, res) => {
+    app.get('/addservice', async (req, res) => {
       const email = req.query.email;
       const limit = parseInt(req.query.limit) || 0;
 
