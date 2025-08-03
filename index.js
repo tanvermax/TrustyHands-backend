@@ -56,9 +56,9 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
 
-    const userCollection = client.db('service').collection("user")
-    const serviceCollection = client.db('service').collection("allservice")
-    const orderCollection = client.db('service').collection("order")
+    const userCollection = client.db('homeservice').collection("user")
+    const serviceCollection = client.db('homeservice').collection("allservice")
+    const orderCollection = client.db('homeservice').collection("order")
     // jwt token
     app.post('/jwt', async (req, res) => {
       const user = req.body;
@@ -174,20 +174,20 @@ async function run() {
       const result = await serviceCollection.deleteOne(query)
       res.send(result);
     })
-// privet routs jwt
-app.get('/addservice23',verify, async (req, res) => {
-  const email = req.query.email;
-  const limit = parseInt(req.query.limit) || 0;
+    // privet routs jwt
+    app.get('/addservice23', verify, async (req, res) => {
+      const email = req.query.email;
+      const limit = parseInt(req.query.limit) || 0;
 
-  let query = {};
-  if (email) {
-    query = { provideremail: email }
-  }
+      let query = {};
+      if (email) {
+        query = { provideremail: email }
+      }
 
-  const cursor = serviceCollection.find(query).limit(limit);
-  const result = await cursor.toArray();
-  res.send(result);
-})
+      const cursor = serviceCollection.find(query).limit(limit);
+      const result = await cursor.toArray();
+      res.send(result);
+    })
     // all serviec api
     app.get('/addservice', async (req, res) => {
       const email = req.query.email;
