@@ -13,6 +13,7 @@ app.use(cors({
     "https://home-service-d15f3.firebaseapp.com",
     'https://home-service-d15f3.web.app'
   ],
+   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 app.use(express.json());
