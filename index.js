@@ -11,10 +11,9 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cors({
   origin: ['http://localhost:5173',
     "https://home-service-d15f3.firebaseapp.com",
-    'https://home-service-d15f3.web.app',
-    'https://trusty-hands.vercel.app'
+     'https://trusty-hands.vercel.app'  // ✅ add this
   ],
-   methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 app.use(express.json());
@@ -26,22 +25,22 @@ const cookieOptions = {
   sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
 };
 //l
-// const verify = (req, res, next) => {
-//   const token = req.cookies?.token;
+const verify = (req, res, next) => {
+  const token = req.cookies?.token;
 
-//   if (!token) {
-//     return res.status(401).send({ message: 'Unatuhorized access' })
-//   }
-//   // verify
-//   jwt.verify(token, process.env.ACCESS_TOKEN, (err, decode) => {
-//     if (err) {
-//       return res.status(401).send({ message: 'Unatuhorized access' })
-//     }
-//     req.user = decode;
-//     next();
-//   })
+  if (!token) {
+    return res.status(401).send({ message: 'Unatuhorized access' })
+  }
+  // verify
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decode) => {
+    if (err) {
+      return res.status(401).send({ message: 'Unatuhorized access' })
+    }
+    req.user = decode;
+    next();
+  })
 
-// }
+}
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
@@ -62,14 +61,14 @@ async function run() {
     const serviceCollection = client.db('homeservice').collection("allservice")
     const orderCollection = client.db('homeservice').collection("order")
     // jwt token
-    // app.post('/jwt', async (req, res) => {
-    //   const user = req.body;
-    //   const token = jwt.sign(user, process.env.ACCESS_TOKEN,
-    //     { expiresIn: '5h' });
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN,
+        { expiresIn: '5h' });
 
-    //   res.cookie('token', token, cookieOptions)
-    //     .send({ success: true })
-    // })
+      res.cookie('token', token, cookieOptions)
+        .send({ success: true })
+    })
     // token remove
     app.post('/logout', async (req, res) => {
       const user = req.body;
@@ -99,7 +98,7 @@ async function run() {
     });
 
     //  all order
-    app.get('/order', async (req, res) => {
+    app.get('/order', verify, async (req, res) => {
       const email = req.query.email; // For ordergivenuseremail
       const email2 = req.query.email2; // For serviceprovideremail
 
@@ -177,7 +176,7 @@ async function run() {
       res.send(result);
     })
     // privet routs jwt
-    app.get('/addservice23', async (req, res) => {
+    app.get('/addservice23', verify, async (req, res) => {
       const email = req.query.email;
       const limit = parseInt(req.query.limit) || 0;
 
