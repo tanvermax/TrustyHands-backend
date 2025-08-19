@@ -69,6 +69,25 @@ async function run() {
       res.cookie('token', token, cookieOptions)
         .send({ success: true })
     })
+    // Get all users, orders, and services
+    app.get('/dashboard-data', async (req, res) => {
+      try {
+        const users = await userCollection.find().toArray();
+        const orders = await orderCollection.find().toArray();
+        const services = await serviceCollection.find().toArray();
+
+        res.send({
+          users,
+          orders,
+          services
+        });
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        res.status(500).send({ success: false, message: "Failed to fetch dashboard data" });
+      }
+    });
+
+
     // token remove
     app.post('/logout', async (req, res) => {
       const user = req.body;
@@ -221,7 +240,7 @@ async function run() {
 
     // get al user
     app.get("/user/:email?", async (req, res) => {
-      const email = req.params.email; 
+      const email = req.params.email;
       try {
         if (email) {
           const user = await userCollection.findOne({ email });
