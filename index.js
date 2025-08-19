@@ -11,7 +11,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cors({
   origin: ['http://localhost:5173',
     "https://home-service-d15f3.firebaseapp.com",
-     'https://trusty-hands.vercel.app'  // ✅ add this
+    'https://trusty-hands.vercel.app'  // ✅ add this
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
@@ -135,6 +135,10 @@ async function run() {
     // service details
     app.get('/addservice/:id', async (req, res) => {
       const id = req.params.id;
+
+      // if (!ObjectId.isValid(id)) {
+      //   return res.status(400).send({ error: "Invalid ID format" });
+      // }
       const query = { _id: new ObjectId(id) }
 
       const service = await serviceCollection.findOne(query);
@@ -192,6 +196,9 @@ async function run() {
     // all serviec api
     app.get('/addservice', async (req, res) => {
       const email = req.query.email;
+      console.log("user email :", email);
+
+
       const limit = parseInt(req.query.limit) || 0;
 
       let query = {};
@@ -213,12 +220,26 @@ async function run() {
     })
 
     // get al user
-    app.get('/user', async (req, res) => {
+    app.get("/user/:email?", async (req, res) => {
+      const email = req.params.email; 
+      try {
+        if (email) {
+          const user = await userCollection.findOne({ email });
+          if (user) {
+            res.send(user);
+          } else {
+            res.status(404).send({ message: "User not found" });
+          }
+        } else {
+          const users = await userCollection.find().toArray();
+          res.send(users);
+        }
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
 
-      const cursor = userCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    })
     // create user
 
     app.post('/user', async (req, res) => {
@@ -240,7 +261,7 @@ run().catch(console.dir);
 
 
 app.get('/', (req, res) => {
-  res.send('service is getting ready ')
+  res.send('trustyhand is getting ready ')
 })
 
 app.listen(port, () => {
