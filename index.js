@@ -11,7 +11,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cors({
   origin: ['http://localhost:5173',
     "https://home-service-d15f3.firebaseapp.com",
-    'https://trusty-hands.vercel.app'  // ✅ add this
+    'https://trusty-hands.vercel.app'
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
@@ -142,6 +142,110 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch orders." });
       }
     });
+    // cancleorder
+    app.put('/order/cancel/:id', async (req, res) => {
+    try {
+        const id = req.params.id; // The orderid from your collection
+        
+        // Data to update the document with
+        const updateDoc = {
+            $set: {
+                serviceStatus: 'cancelled'
+            }
+        };
+
+        // Query to find the document by your custom string orderid
+        const query = { orderid: id }; 
+
+        // Options: return the updated document
+        const options = { returnOriginal: false }; 
+
+        // Update the document in MongoDB
+        const result = await orderCollection.updateOne(query, updateDoc, options);
+
+        if (result.matchedCount === 0) {
+            return res.status(404).send({
+                success: false,
+                message: "Order not found."
+            });
+        }
+
+        res.status(200).send({
+            success: true,
+            message: "Order successfully cancelled.",
+            data: result
+        });
+
+    } catch (error) {
+        console.error("Error cancelling order:", error);
+        res.status(500).send({
+            success: false,
+            message: "Internal server error during cancellation."
+        });
+    }
+});
+// delteorder
+app.delete('/order/:id', async (req, res) => {
+    try {
+        const id = req.params.id; // The orderid from your collection
+        
+        // Query to find the document by your custom string orderid
+        const query = { orderid: id }; 
+
+        // Delete the document in MongoDB
+        const result = await orderCollection.deleteOne(query);
+
+        if (result.deletedCount === 0) {
+            return res.status(404).send({
+                success: false,
+                message: "Order not found or already deleted."
+            });
+        }
+
+        res.status(200).send({
+            success: true,
+            message: "Order successfully deleted.",
+            data: result
+        });
+
+    } catch (error) {
+        console.error("Error deleting order:", error);
+        res.status(500).send({
+            success: false,
+            message: "Internal server error during deletion."
+        });
+    }
+});
+    // order by id
+    app.get('/order/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        console.log(email)
+        const query = { ordergivenuseremail: email };
+        const orders = await orderCollection.find(query).toArray();
+
+        if (orders.length > 0) {
+          res.status(200).send({
+            success: true,
+            message: "Orders found.",
+            data: orders
+          });
+        } else {
+          res.status(404).send({
+            success: false,
+            message: "No orders found for this email.",
+            data: [] // Return an empty array when no orders are found
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).send({
+          success: false,
+          message: "An internal server error occurred.",
+          data: null
+        });
+      }
+    })
 
     // order
     app.post('/order', async (req, res) => {
