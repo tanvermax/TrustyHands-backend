@@ -60,6 +60,7 @@ async function run() {
     const userCollection = client.db('homeservice').collection("user")
     const serviceCollection = client.db('homeservice').collection("allservice")
     const orderCollection = client.db('homeservice').collection("order")
+    const serviceRequestsCollection = client.db('homeservice').collection("serviceRequests")
     // jwt token
     app.post('/jwt', async (req, res) => {
       const user = req.body;
@@ -96,6 +97,43 @@ async function run() {
       res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true })
     })
 
+    // post from user servicerequest
+    // POST route to submit a new service request from a user
+    app.post('/servicerequest', async (req, res) => {
+      try {
+        // Assume the request body contains all necessary data
+        const newRequest = req.body;
+
+        // Add a timestamp and initial status
+        newRequest.postedAt = new Date();
+        newRequest.status = "Open"; // Status can be 'Open', 'Assigned', 'Closed'
+
+        // Validate required fields (optional but recommended)
+        if (!newRequest.ordergivenuseremail || !newRequest.servicename || !newRequest.instruction) {
+          return res.status(400).send({
+            success: false,
+            message: "Missing required fields (email, service name, or instructions)."
+          });
+        }
+
+        // Save the request to the database
+        const result = await serviceRequestsCollection.insertOne(newRequest);
+
+        res.status(201).send({
+          success: true,
+          message: "Service request posted successfully!",
+          data: result.insertedId // Return the ID of the new document
+        });
+
+      } catch (error) {
+        console.error("Error posting service request:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal server error occurred while posting the request."
+        });
+      }
+    });
+
 
     app.put('/order/:id', async (req, res) => {
       const id = req.params.id;
@@ -117,7 +155,7 @@ async function run() {
     });
 
     //  all order
-    app.get('/order', verify, async (req, res) => {
+    app.get('/order', async (req, res) => {
       const email = req.query.email; // For ordergivenuseremail
       const email2 = req.query.email2; // For serviceprovideremail
 
@@ -144,78 +182,78 @@ async function run() {
     });
     // cancleorder
     app.put('/order/cancel/:id', async (req, res) => {
-    try {
+      try {
         const id = req.params.id; // The orderid from your collection
-        
+
         // Data to update the document with
         const updateDoc = {
-            $set: {
-                serviceStatus: 'cancelled'
-            }
+          $set: {
+            serviceStatus: 'cancelled'
+          }
         };
 
         // Query to find the document by your custom string orderid
-        const query = { orderid: id }; 
+        const query = { orderid: id };
 
         // Options: return the updated document
-        const options = { returnOriginal: false }; 
+        const options = { returnOriginal: false };
 
         // Update the document in MongoDB
         const result = await orderCollection.updateOne(query, updateDoc, options);
 
         if (result.matchedCount === 0) {
-            return res.status(404).send({
-                success: false,
-                message: "Order not found."
-            });
+          return res.status(404).send({
+            success: false,
+            message: "Order not found."
+          });
         }
 
         res.status(200).send({
-            success: true,
-            message: "Order successfully cancelled.",
-            data: result
+          success: true,
+          message: "Order successfully cancelled.",
+          data: result
         });
 
-    } catch (error) {
+      } catch (error) {
         console.error("Error cancelling order:", error);
         res.status(500).send({
-            success: false,
-            message: "Internal server error during cancellation."
+          success: false,
+          message: "Internal server error during cancellation."
         });
-    }
-});
-// delteorder
-app.delete('/order/:id', async (req, res) => {
-    try {
+      }
+    });
+    // delteorder
+    app.delete('/order/:id', async (req, res) => {
+      try {
         const id = req.params.id; // The orderid from your collection
-        
+
         // Query to find the document by your custom string orderid
-        const query = { orderid: id }; 
+        const query = { orderid: id };
 
         // Delete the document in MongoDB
         const result = await orderCollection.deleteOne(query);
 
         if (result.deletedCount === 0) {
-            return res.status(404).send({
-                success: false,
-                message: "Order not found or already deleted."
-            });
+          return res.status(404).send({
+            success: false,
+            message: "Order not found or already deleted."
+          });
         }
 
         res.status(200).send({
-            success: true,
-            message: "Order successfully deleted.",
-            data: result
+          success: true,
+          message: "Order successfully deleted.",
+          data: result
         });
 
-    } catch (error) {
+      } catch (error) {
         console.error("Error deleting order:", error);
         res.status(500).send({
-            success: false,
-            message: "Internal server error during deletion."
+          success: false,
+          message: "Internal server error during deletion."
         });
-    }
-});
+      }
+    });
     // order by id
     app.get('/order/:email', async (req, res) => {
       try {
@@ -302,6 +340,8 @@ app.delete('/order/:id', async (req, res) => {
       const result = await serviceCollection.deleteOne(query)
       res.send(result);
     })
+
+    
     // privet routs jwt
     app.get('/addservice23', verify, async (req, res) => {
       const email = req.query.email;
@@ -333,6 +373,17 @@ app.delete('/order/:id', async (req, res) => {
       const result = await cursor.toArray();
       res.send(result);
     })
+    // get all service 
+    app.get('/services/all', async (req, res) => {
+    // NOTE: This route should be protected by Admin middleware
+    try {
+        const services = await serviceCollection.find({}).toArray(); 
+        res.status(200).send({ success: true, data: services });
+    } catch (error) {
+        console.error("Error retrieving all services:", error);
+        res.status(500).send({ success: false, message: "Internal server error." });
+    }
+});
     // create service
     app.post('/addservice', async (req, res) => {
       const newservice = req.body;
@@ -345,6 +396,7 @@ app.delete('/order/:id', async (req, res) => {
     // get al user
     app.get("/user/:email?", async (req, res) => {
       const email = req.params.email;
+
       try {
         if (email) {
           const user = await userCollection.findOne({ email });
@@ -353,6 +405,7 @@ app.delete('/order/:id', async (req, res) => {
           } else {
             res.status(404).send({ message: "User not found" });
           }
+
         } else {
           const users = await userCollection.find().toArray();
           res.send(users);
@@ -362,6 +415,49 @@ app.delete('/order/:id', async (req, res) => {
         res.status(500).send({ message: "Internal server error" });
       }
     });
+    app.get("/onlyusers/:email?", async (req, res) => {
+      const email = req.params.email;
+      console.log(email)
+      try {
+        if (email) {
+          const user = await userCollection.findOne({ email });
+          if (user) {
+            res.send(user);
+          } else {
+            res.status(404).send({ message: "User not found" });
+          }
+
+        } else {
+          const users = await userCollection.find({ role: "user" }).toArray();
+          res.send(users);
+        }
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+    app.get("/sprovider/:email?", async (req, res) => {
+      const email = req.params.email;
+      console.log(email)
+      try {
+        if (email) {
+          const user = await userCollection.findOne({ email });
+          if (user) {
+            res.send(user);
+          } else {
+            res.status(404).send({ message: "User not found" });
+          }
+
+        } else {
+          const users = await userCollection.find({ role: "serviceProvider" }).toArray();
+          res.send(users);
+        }
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
 
     // create user
 
@@ -371,6 +467,81 @@ app.delete('/order/:id', async (req, res) => {
       const result = await userCollection.insertOne(newuser);
       res.send(result);
     })
+    // user stauts or 
+    app.put('/user/status/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        // The body should contain the new status, e.g., { isBlocked: true }
+        const { isBlocked } = req.body;
+
+        if (typeof isBlocked !== 'boolean') {
+          return res.status(400).send({ success: false, message: "Invalid status provided. Must be true or false." });
+        }
+
+        // Prevent Superadmin from blocking themselves (highly recommended!)
+        // You would typically check the requesting user's role/email here.
+
+        const filter = { email: email };
+        const updateDoc = {
+          $set: {
+            isBlocked: isBlocked,
+            // Optionally log the change time
+            statusUpdated: new Date()
+          }
+        };
+
+        const result = await userCollection.updateOne(filter, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ success: false, message: "User not found." });
+        }
+
+        const action = isBlocked ? 'blocked' : 'unblocked';
+
+        res.status(200).send({
+          success: true,
+          message: `User ${email} successfully ${action}.`,
+          data: result
+        });
+
+      } catch (error) {
+        console.error("Error updating user status:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal server error."
+        });
+      }
+    });
+    // DELETE route to permanently remove a user by email
+    app.delete('/user/delete/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        const query = { email: email };
+
+        // Prevent Superadmin from deleting their own account! (Highly recommended)
+
+        const result = await userCollection.deleteOne(query);
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ success: false, message: "User not found or already deleted." });
+        }
+
+        // Note: You should also implement logic to delete associated data (orders, service requests, etc.)
+
+        res.status(200).send({
+          success: true,
+          message: `User ${email} and associated data successfully deleted.`,
+          data: result
+        });
+
+      } catch (error) {
+        console.error("Error deleting user:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal server error during deletion."
+        });
+      }
+    });
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
