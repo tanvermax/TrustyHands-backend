@@ -13,7 +13,7 @@ app.use(cors({
     "https://home-service-d15f3.firebaseapp.com",
     'https://trusty-hands.vercel.app'
   ],
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   credentials: true
 }));
 app.use(express.json());
@@ -61,6 +61,7 @@ async function run() {
     const serviceCollection = client.db('homeservice').collection("allservice")
     const orderCollection = client.db('homeservice').collection("order")
     const serviceRequestsCollection = client.db('homeservice').collection("serviceRequests")
+    const complaintCollection = client.db('homeservice').collection("complaints")
     // jwt token
     app.post('/jwt', async (req, res) => {
       const user = req.body;
@@ -70,6 +71,313 @@ async function run() {
       res.cookie('token', token, cookieOptions)
         .send({ success: true })
     })
+    // notification fro user
+    // Add this route to your run() function in the Express server file
+    app.get('/notifications/user', async (req, res) => {
+      const userEmail = req.user.email;
+
+      try {
+        // NOTE: Assuming you have a reviewCollection for 'New Reviews'
+        // For simplicity, let's focus on Pending Orders/Service Requests first.
+
+        // 1. Pending Orders (Orders user placed that are still Pending)
+        const pendingOrders = await orderCollection.countDocuments({
+          ordergivenuseremail: userEmail,
+          serviceStatus: 'Pending'
+        });
+
+        // 2. Open Service Requests (Assuming user can post requests, status is 'Open')
+        const openServiceRequests = await serviceRequestsCollection.countDocuments({
+          ordergivenuseremail: userEmail, // Assuming this is the field used
+          status: 'Open'
+        });
+
+        res.send({
+          success: true,
+          counts: {
+            myorders: pendingOrders,
+            postrequest: openServiceRequests,
+            // myreviews: 5, // Example if you track new replies to user reviews
+          }
+        });
+      } catch (error) {
+        res.status(500).send({ success: false, message: "Failed to fetch user notifications." });
+      }
+    });
+    // notification for provider 
+    // Add this route to your run() function in the Express server file
+    app.get('/notifications/provider', async (req, res) => {
+      const providerEmail = req.user.email;
+
+      try {
+        // 1. New Orders (Status: Pending)
+        const newOrders = await orderCollection.countDocuments({
+          serviceprovideremail: providerEmail,
+          serviceStatus: 'Pending'
+        });
+
+        // 2. Pending Support Complaints (Status: Pending)
+        const pendingSupport = await complaintCollection.countDocuments({
+          providerEmail: providerEmail,
+          status: 'Pending'
+        });
+
+        res.send({
+          success: true,
+          counts: {
+            orders: newOrders,
+            providersupport: pendingSupport,
+          }
+        });
+      } catch (error) {
+        res.status(500).send({ success: false, message: "Failed to fetch provider notifications." });
+      }
+    });
+    // notification for admin
+    // Add this route to your run() function in the Express server file
+    app.get('/notifications/admin', async (req, res) => {
+      // NOTE: Assume Admin role check is handled by middleware
+      try {
+        // 1. Pending Orders (For general oversight/assignment)
+        const pendingOrders = await orderCollection.countDocuments({
+          serviceStatus: 'Pending'
+        });
+        const serviceOrder = await serviceCollection.countDocuments({});
+
+        // 2. Pending Support Complaints (Status: Pending)
+        const pendingSupport = await complaintCollection.countDocuments({
+          status: 'Pending'
+        });
+
+        // 3. New Users (E.g., users registered in the last 24h, or users with a flag 'isNew')
+        // For simplicity, let's count all users for a 'Manage Users' badge.
+        const totalUsers = await userCollection.countDocuments({role:'user'});
+
+        res.send({
+          success: true,
+          counts: {
+            ordersMange: pendingOrders,
+            adminsupport: pendingSupport,
+            manageusers: totalUsers,
+            mageservice:serviceOrder
+          }
+        });
+      } catch (error) {
+        res.status(500).send({ success: false, message: "Failed to fetch admin notifications." });
+      }
+    });
+
+    // ===================================================
+    // GET route for Admin to retrieve ALL complaints
+    // ===================================================
+    app.get('/admin/all-complaints', async (req, res) => {
+      // NOTE: Ensure req.user has an 'admin' role check here in production.
+      try {
+        const complaints = await complaintCollection.find({})
+          .sort({ status: 1, createdAt: -1 }) // Sort: Pending first (status: 1), then newest first
+          .toArray();
+
+        res.status(200).send({ success: true, data: complaints });
+      } catch (error) {
+        console.error("Error retrieving all complaints for admin:", error);
+        res.status(500).send({ success: false, message: "Internal server error while fetching all complaints." });
+      }
+    });
+    // suppoer complain
+    app.post('/provider-complaint/:email', async (req, res) => {
+      try {
+        const { subject, details } = req.body;
+        const providerEmail = req.params.email; // Get email from JWT
+        const providerName = "Service Provider"; // Assuming 'name' is in the JWT
+
+        if (!subject || !details) {
+          return res.status(400).send({ success: false, message: "Subject and details are required." });
+        }
+
+        const newComplaint = {
+          providerEmail,
+          providerName,
+          subject,
+          details,
+          status: 'Pending', // Initial status
+          adminReply: null,  // Field for admin response
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        const result = await complaintCollection.insertOne(newComplaint);
+
+        res.status(201).send({
+          success: true,
+          message: "Complaint submitted successfully!",
+          id: result.insertedId
+        });
+      } catch (error) {
+        console.error("Error submitting complaint:", error);
+        res.status(500).send({ success: false, message: "Internal server error during complaint submission." });
+      }
+    });
+
+    app.get('/provider-complaints/:email', async (req, res) => {
+      try {
+        const providerEmail = req.params.email; // Get email from JWT
+
+        const complaints = await complaintCollection.find({
+          providerEmail: providerEmail
+        })
+          .sort({ createdAt: -1 }) // Show newest first
+          .toArray();
+
+        res.status(200).send({ success: true, data: complaints });
+      } catch (error) {
+        console.error("Error retrieving complaints:", error);
+        res.status(500).send({ success: false, message: "Internal server error while fetching complaints." });
+      }
+    });
+    // PUT route for Admin to update status and send a reply (requires Admin middleware in real app)
+    app.put('/complaint/:id', async (req, res) => {
+      // NOTE: In a real app, this should require admin authorization!
+      try {
+        const id = req.params.id;
+        const { status, adminReply } = req.body;
+
+        if (!status) {
+          return res.status(400).send({ success: false, message: "Status is required." });
+        }
+
+        const updateDoc = {
+          $set: {
+            status,
+            updatedAt: new Date()
+          }
+        };
+
+        if (adminReply !== undefined) {
+          updateDoc.$set.adminReply = adminReply;
+        }
+
+        const result = await complaintCollection.updateOne(
+          { _id: new ObjectId(id) },
+          updateDoc
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ success: false, message: "Complaint not found." });
+        }
+
+        res.status(200).send({ success: true, message: "Complaint updated successfully." });
+      } catch (error) {
+        console.error("Error updating complaint:", error);
+        res.status(500).send({ success: false, message: "Internal server error." });
+      }
+    });
+    // service provider dahsbord
+    // ===================================================
+    // Service Provider Dashboard Metrics API
+    // ===================================================
+    app.get('/service-provider/dashboard/:email', async (req, res) => {
+      const providerEmail = req.params.email;
+      try {
+        // 1. Total Services Posted by Provider
+        const totalServices = await serviceCollection.countDocuments({
+          provideremail: providerEmail
+        });
+
+        // 2. Active Orders (In Progress)
+        const activeOrders = await orderCollection.countDocuments({
+          serviceprovideremail: providerEmail,
+          serviceStatus: 'In Progress'
+        });
+
+        // 3. Completed Orders
+        const completedOrders = await orderCollection.countDocuments({
+          serviceprovideremail: providerEmail,
+          serviceStatus: 'Completed'
+        });
+
+        // 4. Calculate Earnings (SUM of 'cost' field from Completed Orders)
+        const completedOrdersList = await orderCollection.find({
+          serviceprovideremail: providerEmail,
+          serviceStatus: 'Completed'
+        }).toArray();
+
+        // Ensure cost is treated as a number for summation
+        const totalEarnings = completedOrdersList.reduce((sum, order) => {
+          // Attempt to parse 'cost' as a float, defaulting to 0 if invalid
+          const cost = parseFloat(order.cost) || 0;
+          return sum + cost;
+        }, 0);
+
+        // 5. Fetch Recent Orders (e.g., last 5, sorted by orderid or date)
+        const recentOrders = await orderCollection.find({
+          serviceprovideremail: providerEmail
+        })
+          .sort({ serviceDate: -1 }) // Sort by latest date descending
+          .limit(5)
+          .toArray();
+
+
+        res.send({
+          success: true,
+          data: {
+            totalServices,
+            activeOrders,
+            completedOrders,
+            totalEarnings: totalEarnings.toFixed(2), // Format as currency string
+            recentOrders
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching provider dashboard data:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch provider dashboard data."
+        });
+      }
+    });
+    // analytic
+    app.get('/analytics/summary', async (req, res) => {
+      try {
+        // Fetch total counts
+        const totalUsers = await userCollection.countDocuments();
+        const totalServices = await serviceCollection.countDocuments();
+        const totalOrders = await orderCollection.countDocuments();
+        const totalServiceRequests = await serviceRequestsCollection.countDocuments();
+
+        // Fetch counts based on status
+        const openOrders = await orderCollection.countDocuments({ serviceStatus: { $ne: 'Completed' } });
+        const completedOrders = await orderCollection.countDocuments({ serviceStatus: 'Completed' });
+        const cancelledOrders = await orderCollection.countDocuments({ serviceStatus: 'cancelled' });
+
+        // Fetch user role counts (assuming 'role' field exists on user documents)
+        const serviceProviders = await userCollection.countDocuments({ role: 'serviceProvider' });
+        const regularUsers = await userCollection.countDocuments({ role: 'user' });
+
+        // You can add more complex aggregation pipelines here for things like 'Top 5 Services' or 'Revenue'
+
+        res.send({
+          success: true,
+          data: {
+            totalUsers,
+            totalServices,
+            totalOrders,
+            totalServiceRequests,
+            openOrders,
+            completedOrders,
+            cancelledOrders,
+            serviceProviders,
+            regularUsers,
+            // ... more metrics
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching analytics summary:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch analytics data."
+        });
+      }
+    });
     // Get all users, orders, and services
     app.get('/dashboard-data', async (req, res) => {
       try {
@@ -341,7 +649,7 @@ async function run() {
       res.send(result);
     })
 
-    
+
     // privet routs jwt
     app.get('/addservice23', verify, async (req, res) => {
       const email = req.query.email;
@@ -375,15 +683,15 @@ async function run() {
     })
     // get all service 
     app.get('/services/all', async (req, res) => {
-    // NOTE: This route should be protected by Admin middleware
-    try {
-        const services = await serviceCollection.find({}).toArray(); 
+      // NOTE: This route should be protected by Admin middleware
+      try {
+        const services = await serviceCollection.find({}).toArray();
         res.status(200).send({ success: true, data: services });
-    } catch (error) {
+      } catch (error) {
         console.error("Error retrieving all services:", error);
         res.status(500).send({ success: false, message: "Internal server error." });
-    }
-});
+      }
+    });
     // create service
     app.post('/addservice', async (req, res) => {
       const newservice = req.body;
@@ -455,6 +763,72 @@ async function run() {
       } catch (err) {
         console.error(err);
         res.status(500).send({ message: "Internal server error" });
+      }
+    });
+    // PATCH route to change status from Pending to In Progress (Take Order)
+    app.patch('/order/take/:id', async (req, res) => {
+      try {
+        const orderId = req.params.id; // Using the 'orderid' field from your collection, not MongoDB's _id
+        console.log(orderId)
+        // Find the order by your custom string orderid
+        const query = { orderid: orderId };
+
+        const updateDoc = {
+          $set: {
+            serviceStatus: 'In Progress'
+            // Optionally, log the time the order was taken
+            // takenAt: new Date()
+          }
+        };
+
+        const result = await orderCollection.updateOne(query, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ success: false, message: "Order not found." });
+        }
+        if (result.modifiedCount === 0) {
+          return res.status(200).send({ success: true, message: "Order status already 'In Progress'." });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: "Order successfully marked as 'In Progress' (Taken).",
+        });
+
+      } catch (error) {
+        console.error("Error taking order:", error);
+        res.status(500).send({ success: false, message: "Internal server error." });
+      }
+    });
+    // PATCH route to change status to Cancelled (Service Provider initiated)
+    app.patch('/order/cancel-provider/:id', async (req, res) => {
+      try {
+        const orderId = req.params.id;
+        const query = { orderid: orderId };
+
+        // Only allow cancellation if it's currently 'In Progress' (or 'Pending' if you want)
+        // const filter = { orderid: orderId, serviceStatus: { $in: ['Pending', 'In Progress'] } };
+
+        const updateDoc = {
+          $set: {
+            serviceStatus: 'Cancelled'
+          }
+        };
+
+        const result = await orderCollection.updateOne(query, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ success: false, message: "Order not found or not eligible for cancellation." });
+        }
+
+        res.status(200).send({
+          success: true,
+          message: "Order successfully marked as 'Cancelled'.",
+        });
+
+      } catch (error) {
+        console.error("Error cancelling order:", error);
+        res.status(500).send({ success: false, message: "Internal server error during cancellation." });
       }
     });
 
