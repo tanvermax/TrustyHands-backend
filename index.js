@@ -73,8 +73,8 @@ async function run() {
     })
     // notification fro user
     // Add this route to your run() function in the Express server file
-    app.get('/notifications/user', async (req, res) => {
-      const userEmail = req.user.email;
+    app.get('/notifications/user/:email', async (req, res) => {
+      const userEmail = req.params.email;
 
       try {
         // NOTE: Assuming you have a reviewCollection for 'New Reviews'
@@ -106,8 +106,8 @@ async function run() {
     });
     // notification for provider 
     // Add this route to your run() function in the Express server file
-    app.get('/notifications/provider', async (req, res) => {
-      const providerEmail = req.user.email;
+    app.get('/notifications/provider/:email', async (req, res) => {
+      const providerEmail = req.params.email;
 
       try {
         // 1. New Orders (Status: Pending)
