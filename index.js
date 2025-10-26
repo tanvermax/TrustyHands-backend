@@ -11,7 +11,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cors({
   origin: ['http://localhost:5173',
     "https://home-service-d15f3.firebaseapp.com",
-    'https://trusty-hands.vercel.app'
+    'https://trusty-hands.vercel.app',
+    "https://proposal-liart-theta.vercel.app"
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   credentials: true
