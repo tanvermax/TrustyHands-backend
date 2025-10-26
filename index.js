@@ -41,6 +41,8 @@ const verify = (req, res, next) => {
   })
 
 }
+
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.toqnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 
@@ -62,6 +64,8 @@ async function run() {
     const orderCollection = client.db('homeservice').collection("order")
     const serviceRequestsCollection = client.db('homeservice').collection("serviceRequests")
     const complaintCollection = client.db('homeservice').collection("complaints")
+    const proposalCollection = client.db('homeservice').collection("proposals");
+    const conditionCollection = client.db('homeservice').collection("proposalscondition");
     // jwt token
     app.post('/jwt', async (req, res) => {
       const user = req.body;
@@ -71,6 +75,46 @@ async function run() {
       res.cookie('token', token, cookieOptions)
         .send({ success: true })
     })
+
+
+    app.post('/api/proposal-response',async (req, res) => {
+      console.log(req.body);
+
+      const anwser = req.body
+      const result = await proposalCollection.insertOne(anwser);
+      res.json(
+        {
+          success: true,
+          data: result,
+          message: 'Response saved'
+        });
+    });
+
+
+    app.post('/api/condition-response', async (req, res) => {
+  try {
+    const { condition, timestamp, deviceInfo, location } = req.body;
+
+    const result = await conditionCollection.insertOne({
+      condition,
+      timestamp,
+      deviceInfo,
+      location,
+    });
+    console.log(result)
+
+    res.json({ success: true, message: 'Condition saved successfully!', data: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+
+
+
+
+
     // notification fro user
     // Add this route to your run() function in the Express server file
     app.get('/notifications/user/:email', async (req, res) => {
@@ -151,7 +195,7 @@ async function run() {
 
         // 3. New Users (E.g., users registered in the last 24h, or users with a flag 'isNew')
         // For simplicity, let's count all users for a 'Manage Users' badge.
-        const totalUsers = await userCollection.countDocuments({role:'user'});
+        const totalUsers = await userCollection.countDocuments({ role: 'user' });
 
         res.send({
           success: true,
@@ -159,7 +203,7 @@ async function run() {
             ordersMange: pendingOrders,
             adminsupport: pendingSupport,
             manageusers: totalUsers,
-            mageservice:serviceOrder
+            mageservice: serviceOrder
           }
         });
       } catch (error) {
