@@ -882,6 +882,10 @@ async function run() {
 
     app.post('/user', async (req, res) => {
       const newuser = req.body;
+      const isExit = await userCollection.findOne({email:newuser.email});
+      if(isExit){
+        return res.send({message:"user already exit"})
+      }
       console.log("new user, ", newuser);
       const result = await userCollection.insertOne(newuser);
       res.send(result);
