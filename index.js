@@ -717,7 +717,7 @@ async function run() {
         session.startTransaction();
 
         const { cost, userId, ...orderData } = req.body;
-        console.log(cost, userId,orderData)
+        console.log(cost, userId, orderData)
 
         // 2. Convert userId to ObjectId
         const userObjectId = new ObjectId(userId);
@@ -742,7 +742,7 @@ async function run() {
           },
           { returnDocument: 'after', session } // Return the updated document
         );
-        console.log("deductionResult :",deductionResult)
+        console.log("deductionResult :", deductionResult)
 
         if (!deductionResult) {
           await session.abortTransaction();
@@ -756,7 +756,7 @@ async function run() {
           ...orderData,
           ordergivenuserId: userId, // Link the order to the user ID
           bookedAt: new Date(),
-          cost:cost,
+          cost: cost,
           // Set initial service status
           serviceStatus: 'Pending',
           // 🔑 Escrow Status: Funds are held by the platform (deducted from user)
@@ -981,21 +981,22 @@ async function run() {
     // PATCH route to change status from Pending to In Progress (Take Order)
     app.patch('/order/take/:id', async (req, res) => {
       try {
-        const orderId = req.params.id; // Using the 'orderid' field from your collection, not MongoDB's _id
+        const orderId = req.params.id;
         console.log(orderId)
         // Find the order by your custom string orderid
-        const query = { orderid: orderId };
+
+        const query = { _id: new ObjectId(orderId) }
 
         const updateDoc = {
           $set: {
-            serviceStatus: 'In Progress'
+            serviceStatus: 'In Progress',
             // Optionally, log the time the order was taken
-            // takenAt: new Date()
+            takenAt: new Date()
           }
         };
-
+        console.log("updateDoc", updateDoc)
         const result = await orderCollection.updateOne(query, updateDoc);
-
+        console.log("result", result)
         if (result.matchedCount === 0) {
           return res.status(404).send({ success: false, message: "Order not found." });
         }
@@ -1017,7 +1018,7 @@ async function run() {
     app.patch('/order/cancel-provider/:id', async (req, res) => {
       try {
         const orderId = req.params.id;
-        const query = { orderid: orderId };
+        const query = { _id: new ObjectId(orderId) }
 
         // Only allow cancellation if it's currently 'In Progress' (or 'Pending' if you want)
         // const filter = { orderid: orderId, serviceStatus: { $in: ['Pending', 'In Progress'] } };
@@ -1045,7 +1046,51 @@ async function run() {
       }
     });
 
+    app.put('/order/complete/provider/:id', async (req, res) => {
+      try {
+        const mongoIdString = req.params.id;
 
+        // 1. Validate the ID format
+        if (!mongoIdString) {
+          return res.status(400).send({ success: false, message: "Missing Order ID." });
+        }
+
+        // 2. Define the Query: Use ObjectId to find the document by its unique _id
+        const query = { _id: new ObjectId(mongoIdString) };
+
+        // 3. Define the Update Document
+        const updateDoc = {
+          $set: {
+            serviceStatus: 'Completed',
+            completedAt: new Date() // Record the completion time
+            // TODO: Add logic here to update the user's wallet/payout the funds from escrow.
+            // For example: escrowStatus: 'ReleasedToProvider'
+          }
+        };
+
+        // 4. Perform the Update
+        const result = await orderCollection.updateOne(query, updateDoc);
+
+        // 5. Handle Results
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ success: false, message: "Order not found or ID is invalid." });
+        }
+        if (result.modifiedCount === 0) {
+          return res.status(200).send({ success: true, message: "Order status already 'Completed'." });
+        }
+
+        // Success response
+        res.status(200).send({
+          success: true,
+          message: "Order successfully marked as 'Completed' and funds released (if escrow logic is implemented)."
+        });
+
+      } catch (error) {
+        console.error("Error completing order:", error);
+        // Catch invalid ObjectId format or database errors
+        res.status(500).send({ success: false, message: "Internal server error during order completion." });
+      }
+    });
 
     // user info update 
     app.put('/user/:email', async (req, res) => {
