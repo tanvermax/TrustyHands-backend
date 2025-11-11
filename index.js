@@ -78,7 +78,7 @@ async function run() {
     })
 
 
-    app.post('/api/proposal-response',async (req, res) => {
+    app.post('/api/proposal-response', async (req, res) => {
       console.log(req.body);
 
       const anwser = req.body
@@ -93,27 +93,98 @@ async function run() {
 
 
     app.post('/api/condition-response', async (req, res) => {
-  try {
-    const { condition, timestamp, deviceInfo, location } = req.body;
+      try {
+        const { condition, timestamp, deviceInfo, location } = req.body;
 
-    const result = await conditionCollection.insertOne({
-      condition,
-      timestamp,
-      deviceInfo,
-      location,
+        const result = await conditionCollection.insertOne({
+          condition,
+          timestamp,
+          deviceInfo,
+          location,
+        });
+        console.log(result)
+
+        res.json({ success: true, message: 'Condition saved successfully!', data: result });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Server error' });
+      }
     });
-    console.log(result)
-
-    res.json({ success: true, message: 'Condition saved successfully!', data: result });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
 
 
 
 
+    // transection
+    app.post('/recharge', async (req, res) => {
+      // 1. Get data from the client request
+      const { amount, method, userId } = req.body;
+      // User ID comes from the 'protect' middleware after token verification
+
+      console.log("amount, method,userId", amount, method, userId)
+      // Basic input validation
+      if (!amount || amount <= 0 || !method) {
+        return res.status(400).json({ message: 'Invalid amount or payment method.' });
+      }
+
+      const rechargeAmount = parseFloat(amount);
+
+
+
+      console.log(`[BACKEND] Initiating $${rechargeAmount} recharge via ${method} for user ${userId}`);
+
+      // --- 3. DATABASE UPDATE (Assuming successful payment) ---
+      try {
+        // Find the user in the database
+        let userObjectId;
+        try {
+          userObjectId = new ObjectId(userId);
+        } catch (e) {
+          return res.status(400).json({ message: 'Invalid User ID format.' });
+        }
+
+        // 🔑 FIX 2: Use findOne() instead of findById()
+        // Find the user to get their current wallet balance
+        const user = await userCollection.findOne({ _id: userObjectId });
+
+        if (!user) {
+          return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Check if the user has a wallet property, if not, initialize it.
+        const currentWallet = user.wallet || 0;
+        const newBalance = currentWallet + rechargeAmount;
+        const updateResult = await userCollection.updateOne(
+          { _id: userObjectId }, // Filter by user ID
+          {
+            $set: { wallet: newBalance }, // Set the new wallet value
+            $push: {
+              transactions: { // Optional: log the transaction
+                type: 'recharge',
+                amount: rechargeAmount,
+                method: method,
+                timestamp: new Date()
+              }
+            }
+          }
+        );
+
+        // 4. Send a success response back to the client
+        if (updateResult.modifiedCount === 0 && updateResult.matchedCount === 0) {
+          // This is unlikely if findOne succeeded, but good for robustness
+          return res.status(500).json({ message: 'Failed to update user wallet.' });
+        }
+
+        // 4. Send a success response back to the client
+        res.status(200).json({
+          message: 'Wallet recharged successfully.',
+          newBalance: newBalance, // Send the new calculated balance back
+          transactionId: 'TXN_' + Date.now(),
+        });
+      } catch (error) {
+        console.error('Database/Recharge error:', error);
+        res.status(500).json({ message: 'Server error during wallet update.' });
+      }
+    });
 
 
     // notification fro user
@@ -640,10 +711,80 @@ async function run() {
 
     // order
     app.post('/order', async (req, res) => {
-      const order = req.body;
-      console.log(order);
-      const result = await orderCollection.insertOne(order);
-      res.send(result)
+      const session = client.startSession(); // Start MongoDB transaction session
+
+      try {
+        session.startTransaction();
+
+        const { cost, userId, ...orderData } = req.body;
+        console.log(cost, userId,orderData)
+
+        // 2. Convert userId to ObjectId
+        const userObjectId = new ObjectId(userId);
+        console.log(userObjectId)
+
+        // 3. Check Wallet Balance & Deduct Funds (Atomic Operation)
+        const deductionResult = await userCollection.findOneAndUpdate(
+          {
+            _id: userObjectId,
+            wallet: { $gte: cost } // Ensures wallet has enough funds
+          },
+          {
+            $inc: { wallet: -cost }, // Deduct the cost
+            $push: {
+              transactions: { // Log the deduction
+                type: 'service_deduction',
+                amount: -cost,
+                serviceId: orderData.orderid,
+                timestamp: new Date()
+              }
+            }
+          },
+          { returnDocument: 'after', session } // Return the updated document
+        );
+        console.log("deductionResult :",deductionResult)
+
+        if (!deductionResult) {
+          await session.abortTransaction();
+          return res.status(400).json({ message: 'Insufficient wallet balance or user not found.' });
+        }
+
+        const newWalletBalance = deductionResult.wallet;
+
+        // 4. Create the Order
+        const orderDoc = {
+          ...orderData,
+          ordergivenuserId: userId, // Link the order to the user ID
+          bookedAt: new Date(),
+          cost:cost,
+          // Set initial service status
+          serviceStatus: 'Pending',
+          // 🔑 Escrow Status: Funds are held by the platform (deducted from user)
+          escrowStatus: 'HeldByPlatform'
+        };
+
+        const orderCreationResult = await orderCollection.insertOne(orderDoc, { session });
+
+        if (!orderCreationResult.insertedId) {
+          throw new Error('Failed to create order document.');
+        }
+
+        // 5. Commit Transaction
+        await session.commitTransaction();
+
+        res.status(200).json({
+          message: 'Booking successful. Funds deducted and held in escrow.',
+          insertedId: orderCreationResult.insertedId,
+          newWalletBalance: newWalletBalance,
+        });
+
+      } catch (error) {
+        await session.abortTransaction();
+        console.error('Transaction Failed:', error);
+        res.status(500).json({ message: `Server error during booking transaction: ${error.message}` });
+      } finally {
+        await session.endSession();
+      }
 
     })
     // service details
@@ -658,6 +799,33 @@ async function run() {
       const service = await serviceCollection.findOne(query);
       res.send(service)
     })
+    app.get('/services/names', async (req, res) => {
+      try {
+        // Use the find() method on your collection
+        const services = await serviceCollection.find(
+          {}, // The first object is the query filter (empty to select all documents)
+          { projection: { serviceName: 1, _id: 0 } } // The second object is the projection
+        ).toArray(); // Use .toArray() to convert the cursor result into an array
+
+        // The services array will look like: 
+        // [{ serviceName: 'Plumbing' }, { serviceName: 'Electrician' }, ...]
+
+        // 🔑 OPTIONAL: Transform the array to be a simple list of strings if preferred
+        const serviceNames = services.map(service => service.serviceName);
+
+        // Respond with the list of service names
+        res.json(serviceNames);
+
+      } catch (error) {
+        console.error('Error fetching service names:', error);
+        // Send a 500 server error response
+        res.status(500).json({
+          success: false,
+          message: 'Failed to retrieve service names',
+          error: error.message
+        });
+      }
+    });
     // edit apit service
     app.put('/addservice2/:id', async (req, res) => {
       const id = req.params.id;
@@ -878,13 +1046,57 @@ async function run() {
     });
 
 
+
+    // user info update 
+    app.put('/user/:email', async (req, res) => {
+      const userEmail = req.params.email;
+      const updateData = req.body;
+
+      // Destructure to safely remove the immutable _id and id fields
+      const { _id, id, ...fieldsToUpdate } = updateData;
+
+      try {
+        console.log(updateData);
+
+        // 🔑 Use userCollection.findOneAndUpdate and store the result
+        const result = await userCollection.findOneAndUpdate(
+          { email: userEmail },
+          { $set: fieldsToUpdate },
+          {
+            // Important native driver option: ensures the updated document is returned
+            returnDocument: 'after',
+            // Prevents creating a new document if none is found
+            upsert: false
+          }
+        );
+
+        // 🔑 FIX: Get the updated document from the 'value' property of the result
+        const updatedUser = result.value;
+
+        if (!updatedUser) {
+          // This handles the case where no user was found with the given email
+          return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+
+        const safeUserData = { ...updatedUser };
+        delete safeUserData.password; // Remove password field from the response
+
+        // Return the cleaned user data
+        res.json(safeUserData);
+
+      } catch (error) {
+        console.error('Error updating user profile:', error);
+        res.status(500).json({ success: false, message: 'Failed to update profile', error: error.message });
+      }
+    });
     // create user
 
     app.post('/user', async (req, res) => {
       const newuser = req.body;
-      const isExit = await userCollection.findOne({email:newuser.email});
-      if(isExit){
-        return res.send({message:"user already exit"})
+      const isExit = await userCollection.findOne({ email: newuser.email });
+      if (isExit) {
+        return res.send({ message: "user already exit" })
       }
       console.log("new user, ", newuser);
       const result = await userCollection.insertOne(newuser);
