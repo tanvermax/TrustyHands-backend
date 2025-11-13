@@ -77,7 +77,57 @@ async function run() {
         .send({ success: true })
     })
     // order payment
-    const PLATFORM_FEE_RATE = 0.05;
+    // ✅ Withdraw funds
+    app.post("/wallet/withdraw", async (req, res) => {
+  try {
+    const { providerEmail, amount, method, accountNumber } = req.body;
+    console.log(providerEmail, amount, method, accountNumber);
+
+    if (!providerEmail || !amount || !method || !accountNumber) {
+      return res.status(400).json({ success: false, message: "Missing required fields." });
+    }
+
+    const user = await userCollection.findOne({ email: providerEmail, role: "serviceProvider" });
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    if (amount <= 0) return res.status(400).json({ success: false, message: "Invalid withdrawal amount." });
+
+    if (amount > user.wallet) return res.status(400).json({ success: false, message: "Insufficient wallet balance." });
+
+    // Deduct the amount
+    const newWallet = user.wallet - amount;
+
+    // Add the transaction
+    const newTransaction = {
+      type: "withdraw",
+      amount,
+      method,
+      accountNumber,
+      status: "pending",
+      timestamp: new Date(),
+    };
+
+    // Update user in MongoDB
+    await userCollection.updateOne(
+      { _id: user._id },
+      {
+        $set: { wallet: newWallet },
+        $push: { transactions: newTransaction },
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Withdrawal request for $${amount.toFixed(2)} submitted successfully!`,
+      newBalance: newWallet,
+    });
+  } catch (err) {
+    console.error("Withdrawal error:", err);
+    res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+});
+
 
     app.patch('/order/pay/:id', async (req, res) => {
       try {
@@ -158,7 +208,7 @@ async function run() {
           }
         );
         console.log("walletUpdate", walletUpdate)
-        
+
         // --- Step 3: Final Success Response ---
         if (walletUpdate.modifiedCount > 0) {
           res.status(200).send({
