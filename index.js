@@ -76,7 +76,107 @@ async function run() {
       res.cookie('token', token, cookieOptions)
         .send({ success: true })
     })
+    // order payment
+    const PLATFORM_FEE_RATE = 0.05;
 
+    app.patch('/order/pay/:id', async (req, res) => {
+      try {
+        const mongoIdString = req.params.id;
+        console.log(mongoIdString)
+
+        if (!mongoIdString) {
+          return res.status(400).send({ success: false, message: "Missing Order ID." });
+        }
+
+        const orderId = new ObjectId(mongoIdString);
+        const order = await orderCollection.findOne({ _id: orderId });
+
+        if (!order) {
+          return res.status(404).send({ success: false, message: "Order not found." });
+        }
+
+        if (order.serviceStatus !== 'Completed') {
+          return res.status(400).send({ success: false, message: `Cannot pay provider. Order status is '${order.serviceStatus}'. Must be 'Completed'.` });
+        }
+
+        if (order.escrowStatus !== 'HeldByPlatform') {
+          return res.status(400).send({ success: false, message: `Cannot pay provider. Escrow status is '${order.escrowStatus}'. Funds already released or unavailable.` });
+        }
+
+        if (typeof order.cost !== 'number' || order.cost <= 0) {
+          return res.status(400).send({ success: false, message: "Invalid or missing cost for calculation." });
+        }
+
+        // --- Constants ---
+        const PLATFORM_FEE_RATE = 0.05; // Example: 5% platform fee
+        const grossCost = order.cost;
+
+        const platformFee = parseFloat((grossCost * PLATFORM_FEE_RATE).toFixed(2));
+        const payoutAmount = parseFloat((grossCost - platformFee).toFixed(2));
+
+        // --- Update the order document first ---
+        const updateOrderDoc = {
+          $set: {
+            escrowStatus: 'PaidToProvider',
+            platformFee,
+            payoutAmount,
+            paidAt: new Date()
+          }
+        };
+
+        const orderUpdateResult = await orderCollection.updateOne({ _id: orderId }, updateOrderDoc);
+
+        if (orderUpdateResult.modifiedCount === 0) {
+          return res.status(400).send({ success: false, message: "Order status was already updated." });
+        }
+
+        // --- Step 2: Update the service provider wallet ---
+        const providerEmail = order.serviceprovideremail;
+        if (!providerEmail) {
+          return res.status(400).send({ success: false, message: "No provider email associated with this order." });
+        }
+
+        const provider = await userCollection.findOne({ email: providerEmail });
+        if (!provider) {
+          return res.status(404).send({ success: false, message: "Provider account not found." });
+        }
+
+        const newWalletBalance = (provider.wallet || 0) + payoutAmount;
+
+        const walletUpdate = await userCollection.updateOne(
+          { email: providerEmail },
+          {
+            $set: { wallet: newWalletBalance },
+            $push: {
+              transactions: {
+                type: "service_payout",
+                amount: payoutAmount,
+                serviceId: order.orderid || mongoIdString,
+                timestamp: new Date()
+              }
+            }
+          }
+        );
+        console.log("walletUpdate", walletUpdate)
+        
+        // --- Step 3: Final Success Response ---
+        if (walletUpdate.modifiedCount > 0) {
+          res.status(200).send({
+            success: true,
+            message: `✅ Payout successful! Platform retained $${platformFee.toFixed(2)}, provider received $${payoutAmount.toFixed(2)}.`
+          });
+        } else {
+          res.status(200).send({
+            success: true,
+            message: `Payout processed, but provider wallet update skipped (no modification).`
+          });
+        }
+
+      } catch (error) {
+        console.error("Error processing payout:", error);
+        res.status(500).send({ success: false, message: "Internal server error during payout processing." });
+      }
+    });
 
     app.post('/api/proposal-response', async (req, res) => {
       console.log(req.body);
@@ -111,7 +211,34 @@ async function run() {
       }
     });
 
+    // service request
+    app.get('/service-requests', async (req, res) => {
+      try {
+        // Retrieve the optional 'status' query parameter
+        const { status } = req.query;
 
+        // Build the query object
+        let query = {};
+
+        // If a status is provided (e.g., 'Open'), add it to the query filter
+        if (status) {
+          query.status = status;
+        }
+
+        console.log("Fetching requests with query:", query);
+
+        // Fetch the documents from the collection
+        // Adjust this line based on how your MongoDB collection is referenced
+        const requests = await serviceRequestsCollection.find(query).toArray();
+
+        // 4. Send the results back
+        res.status(200).send(requests);
+
+      } catch (error) {
+        console.error("Error fetching service requests:", error);
+        res.status(500).send({ success: false, message: "Internal server error while fetching requests." });
+      }
+    });
 
 
     // transection
