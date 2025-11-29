@@ -76,57 +76,201 @@ async function run() {
       res.cookie('token', token, cookieOptions)
         .send({ success: true })
     })
+    // GET /complaints?email=user@example.com
+    app.get("/complaints", async (req, res) => {
+      try {
+        const userEmail = req.query.email;
+        console.log(userEmail)
+
+
+        if (!userEmail) {
+          return res.status(400).json({
+            success: false,
+            message: "Email query parameter is required."
+          });
+        }
+
+        const complaints = await complaintCollection
+          .find({ providerEmail: userEmail })
+          .sort({ createdAt: -1 }) // newest first
+          .toArray();
+
+        res.status(200).json({
+          success: true,
+          data: complaints
+        });
+
+      } catch (error) {
+        console.error("Error fetching complaints:", error);
+        res.status(500).json({
+          success: false,
+          message: "Internal server error."
+        });
+      }
+    });
+
+    app.post("/request/accept/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { serviceProviderId, serviceProviderEmail } = req.body;
+
+        if (!serviceProviderId || !serviceProviderEmail) {
+          return res.status(400).json({ success: false,
+             message: "Provider info is required." });
+        }
+
+
+        // Update the request as accepted by this provider
+
+
+        const result = await serviceRequestsCollection.findOneAndUpdate(
+
+          {
+             _id: new ObjectId(id),
+             status: "Open" },
+          {
+            $set: 
+            {
+              status: "Accepted",
+              acceptedById: serviceProviderId,
+              acceptedByEmail: serviceProviderEmail,
+              acceptedAt: new Date()
+            }
+          },
+          { returnDocument: "after" } // important to get the updated document
+        );
+
+        // if (!result.value) {
+        //   return res.status(404).json({
+        //     success: false,
+        //     message: "Request not found or already accepted."
+        //   });
+        // }
+
+        // Fetch the user's contact info
+        // const userinfo = await userCollection.findOne({ email: result.value.ordergivenuseremail });
+
+        // if (!userinfo) {
+        //   return res.status(404).json({
+        //     success: false,
+        //     message: "User info not found."
+        //   });
+        // }
+
+        // const contactInfo = {
+        //   name: userinfo.name,
+        //   email: userinfo.email,
+        //   phone: userinfo.phone
+        // };
+
+        res.status(200).json({
+          success: true,
+          message: "Request accepted. User contact info retrieved.",
+          
+        });
+
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({
+          success: false,
+          message: "Server error."
+        });
+      }
+    });
+
+
+    // POST /support or /complaints
+    app.post("/complaints", async (req, res) => {
+      try {
+        const { providerName, providerEmail, name, subject, details } = req.body;
+
+        if (!providerName || !providerEmail || !name || !subject || !details) {
+          return res.status(400).json({
+            success: false,
+            message: "All fields are required."
+          });
+        }
+
+        const complaint = {
+          providerName,
+          providerEmail,
+          name,
+          subject,
+          details,
+          status: "Pending",
+          adminReply: "",
+          createdAt: new Date()
+        };
+
+        const result = await complaintCollection.insertOne(complaint);
+
+        res.status(201).json({
+          success: true,
+          message: "Your complaint has been submitted successfully.",
+          data: result
+        });
+
+      } catch (error) {
+        console.error("Error submitting complaint:", error);
+        res.status(500).json({
+          success: false,
+          message: "Internal server error."
+        });
+      }
+    });
+
+
     // order payment
     // ✅ Withdraw funds
     app.post("/wallet/withdraw", async (req, res) => {
-  try {
-    const { providerEmail, amount, method, accountNumber } = req.body;
-    console.log(providerEmail, amount, method, accountNumber);
+      try {
+        const { providerEmail, amount, method, accountNumber } = req.body;
+        console.log(providerEmail, amount, method, accountNumber);
 
-    if (!providerEmail || !amount || !method || !accountNumber) {
-      return res.status(400).json({ success: false, message: "Missing required fields." });
-    }
+        if (!providerEmail || !amount || !method || !accountNumber) {
+          return res.status(400).json({ success: false, message: "Missing required fields." });
+        }
 
-    const user = await userCollection.findOne({ email: providerEmail, role: "serviceProvider" });
+        const user = await userCollection.findOne({ email: providerEmail, role: "serviceProvider" });
 
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    if (amount <= 0) return res.status(400).json({ success: false, message: "Invalid withdrawal amount." });
+        if (amount <= 0) return res.status(400).json({ success: false, message: "Invalid withdrawal amount." });
 
-    if (amount > user.wallet) return res.status(400).json({ success: false, message: "Insufficient wallet balance." });
+        if (amount > user.wallet) return res.status(400).json({ success: false, message: "Insufficient wallet balance." });
 
-    // Deduct the amount
-    const newWallet = user.wallet - amount;
+        // Deduct the amount
+        const newWallet = user.wallet - amount;
 
-    // Add the transaction
-    const newTransaction = {
-      type: "withdraw",
-      amount,
-      method,
-      accountNumber,
-      status: "pending",
-      timestamp: new Date(),
-    };
+        // Add the transaction
+        const newTransaction = {
+          type: "withdraw",
+          amount,
+          method,
+          accountNumber,
+          status: "pending",
+          timestamp: new Date(),
+        };
 
-    // Update user in MongoDB
-    await userCollection.updateOne(
-      { _id: user._id },
-      {
-        $set: { wallet: newWallet },
-        $push: { transactions: newTransaction },
+        // Update user in MongoDB
+        await userCollection.updateOne(
+          { _id: user._id },
+          {
+            $set: { wallet: newWallet },
+            $push: { transactions: newTransaction },
+          }
+        );
+
+        res.json({
+          success: true,
+          message: `Withdrawal request for $${amount.toFixed(2)} submitted successfully!`,
+          newBalance: newWallet,
+        });
+      } catch (err) {
+        console.error("Withdrawal error:", err);
+        res.status(500).json({ success: false, message: "Server error. Please try again." });
       }
-    );
-
-    res.json({
-      success: true,
-      message: `Withdrawal request for $${amount.toFixed(2)} submitted successfully!`,
-      newBalance: newWallet,
     });
-  } catch (err) {
-    console.error("Withdrawal error:", err);
-    res.status(500).json({ success: false, message: "Server error. Please try again." });
-  }
-});
 
 
     app.patch('/order/pay/:id', async (req, res) => {
@@ -784,55 +928,46 @@ async function run() {
     // cancleorder
     app.put('/order/cancel/:id', async (req, res) => {
       try {
-        const id = req.params.id; // The orderid from your collection
+        const id = req.params.id;
 
-        // Data to update the document with
+        const query = { _id: new ObjectId(id) };
+
         const updateDoc = {
-          $set: {
-            serviceStatus: 'cancelled'
-          }
+          $set: { serviceStatus: 'Cancelled' }
         };
 
-        // Query to find the document by your custom string orderid
-        const query = { orderid: id };
-
-        // Options: return the updated document
-        const options = { returnOriginal: false };
-
-        // Update the document in MongoDB
-        const result = await orderCollection.updateOne(query, updateDoc, options);
+        const result = await orderCollection.updateOne(query, updateDoc);
 
         if (result.matchedCount === 0) {
-          return res.status(404).send({
-            success: false,
-            message: "Order not found."
-          });
+          return res.status(404).send({ success: false, message: "Order not found." });
         }
 
-        res.status(200).send({
-          success: true,
-          message: "Order successfully cancelled.",
-          data: result
-        });
+        res.send({ success: true, message: "Order cancelled successfully." });
 
       } catch (error) {
-        console.error("Error cancelling order:", error);
-        res.status(500).send({
-          success: false,
-          message: "Internal server error during cancellation."
-        });
+        console.error("Error:", error);
+        res.status(500).send({ success: false, message: "Server error." });
       }
     });
+
+
     // delteorder
-    app.delete('/order/:id', async (req, res) => {
+
+    app.delete('/order/delete/:id', async (req, res) => {
       try {
-        const id = req.params.id; // The orderid from your collection
+        const id = req.params.id;
 
-        // Query to find the document by your custom string orderid
-        const query = { orderid: id };
+        if (!id) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid request. Order ID is required."
+          });
+        }
+        const query = { _id: new ObjectId(id) };
+        console.log(query)
 
-        // Delete the document in MongoDB
         const result = await orderCollection.deleteOne(query);
+        console.log(result)
 
         if (result.deletedCount === 0) {
           return res.status(404).send({
@@ -843,8 +978,7 @@ async function run() {
 
         res.status(200).send({
           success: true,
-          message: "Order successfully deleted.",
-          data: result
+          message: "Order successfully deleted."
         });
 
       } catch (error) {
@@ -855,6 +989,7 @@ async function run() {
         });
       }
     });
+
     // order by id
     app.get('/order/:email', async (req, res) => {
       try {
@@ -904,14 +1039,14 @@ async function run() {
         const deductionResult = await userCollection.findOneAndUpdate(
           {
             _id: userObjectId,
-            wallet: { $gte: cost } // Ensures wallet has enough funds
+            wallet: { $gte: Number(cost) } // Ensures wallet has enough funds
           },
           {
-            $inc: { wallet: -cost }, // Deduct the cost
+            $inc: { wallet: -Number(cost) }, // Deduct the cost
             $push: {
               transactions: { // Log the deduction
                 type: 'service_deduction',
-                amount: -cost,
+                amount: -Number(cost),
                 serviceId: orderData.orderid,
                 timestamp: new Date()
               }
@@ -1317,6 +1452,7 @@ async function run() {
     app.post('/user', async (req, res) => {
       const newuser = req.body;
       const isExit = await userCollection.findOne({ email: newuser.email });
+      console.log(isExit)
       if (isExit) {
         return res.send({ message: "user already exit" })
       }
@@ -1324,6 +1460,44 @@ async function run() {
       const result = await userCollection.insertOne(newuser);
       res.send(result);
     })
+    // delete user
+    app.delete('/user/delete/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!id) {
+          return res.status(400).send({
+            success: false,
+            message: "User ID required."
+          });
+        }
+
+        const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "User not found or already deleted."
+          });
+        }
+
+        // If you use cookies for auth:
+
+
+        return res.status(200).send({
+          success: true,
+          message: "Account deleted successfully."
+        });
+
+      } catch (error) {
+        console.error("Error deleting user:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal server error."
+        });
+      }
+    });
+
     // user stauts or 
     app.put('/user/status/:email', async (req, res) => {
       try {
